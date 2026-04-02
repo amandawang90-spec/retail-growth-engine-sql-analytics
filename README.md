@@ -42,7 +42,7 @@ The company operated with a **"Revenue Black Box"** — no visibility into custo
 By implementing a **9-tier RFM framework** and a **12-month survival analysis**, this project uncovered:
 
 - **Champions** (22% of customers) generate **68.4% of total revenue**
-- **£1.94M in revenue is at risk** within declining Loyalist and "About to Sleep" segments
+- **£1.94M in revenue is at risk** within declining Loyal and "About to Sleep" segments
 - The top **1.01% of customers** drive **32% of all revenue** (Pareto confirmed)
 
 ---

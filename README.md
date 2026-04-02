@@ -1,4 +1,4 @@
-🚀 E-Commerce Revenue Engine: From Transactional Data to Predictive Lifetime Value
+🚀 Retail Growth Engine: From Transactional Data to Predictive Lifetime Value
 
 🎯 Project Purpose
 

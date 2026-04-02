@@ -176,10 +176,10 @@ Large share of the database, minimal revenue contribution, high churn.
 │   ├── online_retail_II.xlsx
 ├── scripts/
 │   ├── 01_setup_and_cleaning.sql       # Data sanitization & ledger alignment
-│   ├── 02_rfm_segmentation.sql         # Scoring & 9-tier segment assignment
+│   ├── 02_rfm_segmentation.sql         # RMF scoring & 9-tier segment assignment
 │   ├── 03_cohort_analysis.sql          # 12-month retention & decay matrices
-│   ├── 04_financial_impact.sql         # Pareto & Revenue-at-Risk modeling
-│   └── 05_pareto_and_predictive_clv.sql # Forward-looking lifetime value forecasts
+│   ├── 04_financial_impact.sql         # Segment profitability & Revenue-at-Risk modeling
+│   └── 05_pareto_and_predictive_clv.sql # pareto & forward-looking lifetime value forecasts
 ```
 
 ---

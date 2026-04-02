@@ -169,6 +169,11 @@ Large share of the database, minimal revenue contribution, high churn.
 
 ## 📂 Project Structure
 ```
+├── .env
+├── .gitignore
+├── Retail_Data_Ingestion_and_ETL.ipynb
+├── data/
+│   ├── online_retail_II.xlsx
 ├── scripts/
 │   ├── 01_setup_and_cleaning.sql       # Data sanitization & ledger alignment
 │   ├── 02_rfm_segmentation.sql         # Scoring & 9-tier segment assignment
@@ -180,4 +185,5 @@ Large share of the database, minimal revenue contribution, high churn.
 ---
 
 **Author:** Jing Wang  
+
 **Tools:** PostgreSQL · DBeaver · Tableau

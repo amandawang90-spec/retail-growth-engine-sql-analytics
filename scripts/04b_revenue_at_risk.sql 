@@ -1,0 +1,83 @@
+-- PART 4B: REVENUE AT RISK & SEGMENT ATTRITION
+-- Goal: Identify how much revenue is at risk from churned customers per segment.
+
+CREATE TABLE revenue_at_risk_and_segment_attrition AS
+
+WITH reference_date AS (
+    SELECT MAX(invoice_date) + INTERVAL '1 day' AS ref_day
+    FROM cleaned_retail_main
+),
+base_rfm AS (
+    SELECT
+        customer_id,
+        MAX(invoice_date)                AS last_purchase_date,
+        COUNT(DISTINCT invoice)::NUMERIC AS frequency,
+        SUM(total_price)::NUMERIC        AS monetary
+    FROM cleaned_retail_main
+    GROUP BY customer_id
+),
+rfm_scores AS (
+    SELECT
+        b.customer_id,
+        b.frequency,
+        b.monetary,
+        DATE_PART('day', r.ref_day - b.last_purchase_date)::NUMERIC                      AS recency_days,
+        NTILE(5) OVER (ORDER BY DATE_PART('day', r.ref_day - b.last_purchase_date) DESC) AS r_score,
+        NTILE(5) OVER (ORDER BY b.frequency ASC)                                          AS f_score,
+        NTILE(5) OVER (ORDER BY b.monetary ASC)                                           AS m_score
+    FROM base_rfm b
+    CROSS JOIN reference_date r
+),
+customer_rfm_segmented AS (
+    SELECT
+        *,
+        (r_score::TEXT || f_score::TEXT || m_score::TEXT) AS rfm_combined,
+        CASE
+            WHEN r_score = 1 AND f_score = 1 AND m_score = 1                                THEN 'Lost'
+            WHEN r_score = 1 AND f_score BETWEEN 1 AND 2 AND m_score BETWEEN 1 AND 2       THEN 'Hibernating'
+            WHEN r_score <= 2 AND f_score >= 3 AND m_score >= 3                             THEN 'At-Risk'
+            WHEN r_score BETWEEN 2 AND 3 AND f_score >= 3                                   THEN 'Needs Attention'
+            WHEN r_score >= 4 AND f_score BETWEEN 1 AND 2                                   THEN 'Promising'
+            WHEN r_score >= 4 AND f_score BETWEEN 2 AND 3 AND m_score >= 3                  THEN 'Potential Loyalists'
+            WHEN f_score <= 3 AND m_score >= 4                                               THEN 'Big Spenders'
+            WHEN r_score >= 4 AND f_score >= 4 AND m_score >= 4                             THEN 'Champions'
+            WHEN r_score >= 3 AND f_score >= 4 AND m_score >= 3                             THEN 'Loyal'
+            ELSE 'General/Other'
+        END AS customer_segment
+    FROM rfm_scores
+),
+churn_base AS (
+    SELECT
+        c.customer_id,
+        CASE
+            WHEN DATE_PART('day', r.ref_day - MAX(c.invoice_date)) > 90
+            THEN 1
+            ELSE 0
+        END AS is_churned
+    FROM cleaned_retail_main c
+    CROSS JOIN reference_date r
+    GROUP BY c.customer_id, r.ref_day
+)
+SELECT
+    crs.customer_segment,
+    COUNT(crs.customer_id)                                                                 AS total_customers,
+    SUM(cb.is_churned)                                                                     AS churned_count,
+    COUNT(crs.customer_id) - SUM(cb.is_churned)                                           AS active_count,
+    ROUND(SUM(cb.is_churned)::NUMERIC / NULLIF(COUNT(*), 0) * 100, 2)                    AS churn_rate_pct,
+    ROUND(
+        SUM(CASE WHEN cb.is_churned = 1 THEN crs.monetary ELSE 0 END)::NUMERIC, 2
+    )                                                                                      AS total_revenue_lost,
+    ROUND(
+        SUM(CASE WHEN cb.is_churned = 1 THEN crs.monetary ELSE 0 END)::NUMERIC
+        / NULLIF(SUM(cb.is_churned), 0), 2
+    )                                                                                      AS avg_revenue_per_churned,
+    ROUND(
+        SUM(CASE WHEN cb.is_churned = 1 THEN crs.monetary ELSE 0 END)::NUMERIC * 100
+        / SUM(SUM(CASE WHEN cb.is_churned = 1 THEN crs.monetary ELSE 0 END)) OVER (),
+        2
+    )                                                                                      AS pct_of_total_revenue_lost
+FROM customer_rfm_segmented crs
+JOIN churn_base cb ON crs.customer_id = cb.customer_id
+GROUP BY crs.customer_segment
+ORDER BY total_revenue_lost DESC;
+

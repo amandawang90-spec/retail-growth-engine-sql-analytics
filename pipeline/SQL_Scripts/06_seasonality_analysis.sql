@@ -3,7 +3,6 @@
 
 -- 6A: Monthly Revenue & Order Trends
 CREATE TABLE monthly_revenue_trends AS
-
 SELECT
     DATE_TRUNC('month', invoice_date)                        AS month,
     TO_CHAR(invoice_date, 'YYYY-MM')                         AS month_label,
@@ -23,7 +22,6 @@ ORDER BY month ASC;
 
 -- 6B: Monthly New Customer Acquisition
 CREATE TABLE monthly_new_customers AS
-
 WITH first_purchase AS (
     SELECT
         customer_id,
@@ -44,7 +42,6 @@ ORDER BY acquisition_month ASC;
 
 
 CREATE TABLE revenue_by_month_of_year AS
-
 WITH monthly_revenue AS (
     SELECT
         DATE_TRUNC('month', invoice_date) AS month,

@@ -2,7 +2,6 @@
 -- Goal: Identify if 20% of customers drive 80% of revenue.
 
 CREATE TABLE pareto_analysis AS
-
 WITH totals AS (
     SELECT
         SUM(total_price)::NUMERIC            AS grand_total,
@@ -47,7 +46,7 @@ ORDER BY customer_rank ASC;
 
 -- MILESTONE SUMMARY VIEW
 -- Goal: Snapshot at key customer percentile thresholds.
-
+CREATE TABLE pareto_analysis_summary AS
 SELECT *
 FROM pareto_analysis
 WHERE customer_rank IN (
@@ -63,6 +62,61 @@ ORDER BY customer_rank ASC;
 
 
 -- FULL LIST
+CREATE TABLE pareto_analysis_full_list AS
 SELECT *
 FROM pareto_analysis
+ORDER BY customer_rank ASC;
+
+CREATE TABLE pareto_analysis_update AS 
+WITH totals AS (
+    SELECT
+        SUM(total_price)::NUMERIC   AS grand_total,
+        COUNT(DISTINCT customer_id) AS total_customer_count
+    FROM cleaned_retail_main
+),
+customer_spending AS (
+    SELECT
+        customer_id,
+        SUM(total_price)::NUMERIC AS total_revenue
+    FROM cleaned_retail_main
+    GROUP BY customer_id
+),
+running_total_calc AS (
+    SELECT
+        cs.customer_id,
+        cs.total_revenue,
+        t.grand_total,
+        t.total_customer_count,
+        SUM(cs.total_revenue) OVER (ORDER BY cs.total_revenue DESC) AS running_total,
+        ROW_NUMBER()          OVER (ORDER BY cs.total_revenue DESC) AS customer_rank
+    FROM customer_spending cs
+    CROSS JOIN totals t
+),
+final AS (
+    SELECT
+        customer_id,
+        customer_rank,
+        ROUND(total_revenue, 2)                                                    AS total_revenue,
+        ROUND(customer_rank::NUMERIC / total_customer_count * 100, 2)             AS pct_of_customer_base,
+        ROUND(running_total::NUMERIC  / grand_total * 100, 2)                     AS pct_of_total_revenue,
+        CASE
+            WHEN customer_rank::NUMERIC / total_customer_count <= 0.01 THEN 'Top 1%'
+            WHEN customer_rank::NUMERIC / total_customer_count <= 0.05 THEN 'Top 5%'
+            WHEN customer_rank::NUMERIC / total_customer_count <= 0.10 THEN 'Top 10%'
+            WHEN customer_rank::NUMERIC / total_customer_count <= 0.20 THEN 'Top 20%'
+            WHEN customer_rank::NUMERIC / total_customer_count <= 0.50 THEN 'Top 50%'
+            ELSE 'Bottom 50%'
+        END AS pareto_bucket
+    FROM running_total_calc
+)
+-- Anchor row
+SELECT
+    NULL       AS customer_id,
+    0          AS customer_rank,
+    0          AS total_revenue,
+    0.00       AS pct_of_customer_base,
+    0.00       AS pct_of_total_revenue,
+    NULL       AS pareto_bucket
+UNION ALL
+SELECT * FROM final
 ORDER BY customer_rank ASC;

@@ -1,9 +1,7 @@
--- PHASE 5B: PREDICTIVE CUSTOMER LIFETIME VALUE ANALYSIS
--- CLV = (Average Order Value × Purchase Frequency) / Churn Rate
--- Customer Lifespan = 1 / Churn Rate
+-- PART 4A: SEGMENT YIELD & PROFITABILITY
+-- Goal: Identify revenue concentration and high-value segments.
 
-CREATE TABLE predictive_clv_analysis AS
-
+CREATE TABLE segment_yield_and_profitability AS
 WITH reference_date AS (
     SELECT MAX(invoice_date) + INTERVAL '1 day' AS ref_day
     FROM cleaned_retail_main
@@ -11,9 +9,9 @@ WITH reference_date AS (
 base_rfm AS (
     SELECT
         customer_id,
-        MAX(invoice_date)                AS last_purchase_date,
-        COUNT(DISTINCT invoice)::NUMERIC AS frequency,
-        SUM(total_price)::NUMERIC        AS monetary
+        MAX(invoice_date)                        AS last_purchase_date,
+        COUNT(DISTINCT invoice)::NUMERIC         AS frequency,
+        SUM(total_price)::NUMERIC                AS monetary
     FROM cleaned_retail_main
     GROUP BY customer_id
 ),
@@ -22,7 +20,6 @@ rfm_scores AS (
         b.customer_id,
         b.frequency,
         b.monetary,
-        b.last_purchase_date,
         DATE_PART('day', r.ref_day - b.last_purchase_date)::NUMERIC                      AS recency_days,
         NTILE(5) OVER (ORDER BY DATE_PART('day', r.ref_day - b.last_purchase_date) DESC) AS r_score,
         NTILE(5) OVER (ORDER BY b.frequency ASC)                                          AS f_score,
@@ -30,9 +27,10 @@ rfm_scores AS (
     FROM base_rfm b
     CROSS JOIN reference_date r
 ),
-rfm_final AS (
+customer_rfm_segmented AS (
     SELECT
         *,
+        (r_score::TEXT || f_score::TEXT || m_score::TEXT) AS rfm_combined,
         CASE
             WHEN r_score = 1 AND f_score = 1 AND m_score = 1                                THEN 'Lost'
             WHEN r_score = 1 AND f_score BETWEEN 1 AND 2 AND m_score BETWEEN 1 AND 2       THEN 'Hibernating'
@@ -46,36 +44,23 @@ rfm_final AS (
             ELSE 'General/Other'
         END AS customer_segment
     FROM rfm_scores
-),
-segment_aggregates AS (
-    SELECT
-        f.customer_segment,
-        COUNT(DISTINCT f.customer_id)                  AS total_customers,
-        SUM(f.monetary) / NULLIF(SUM(f.frequency), 0) AS avg_order_value,
-        AVG(f.frequency)                               AS avg_frequency,
-        COUNT(
-            CASE
-                WHEN DATE_PART('day', r.ref_day - f.last_purchase_date) > 90
-                THEN 1
-            END
-        )::NUMERIC / COUNT(*)                          AS churn_rate
-    FROM rfm_final f
-    CROSS JOIN reference_date r
-    GROUP BY f.customer_segment
 )
 SELECT
     customer_segment,
-    total_customers,
-    ROUND(avg_order_value::NUMERIC, 2)                                           AS aov,
-    ROUND(avg_frequency::NUMERIC, 2)                                             AS avg_frequency,
-    ROUND(churn_rate::NUMERIC, 2)                                                AS segment_churn_rate,
-    ROUND((1 - churn_rate)::NUMERIC, 2)                                          AS segment_retention_rate,
-    ROUND((3 / GREATEST(churn_rate, 0.001))::NUMERIC, 2)                         AS avg_customer_lifespan_months,
+    COUNT(customer_id)                                                        AS customer_count,
     ROUND(
-        (avg_order_value * avg_frequency / GREATEST(churn_rate, 0.001))::NUMERIC,
+        COUNT(customer_id)::NUMERIC * 100
+        / SUM(COUNT(customer_id)) OVER (),
         2
-    )                                                                             AS predicted_clv
-FROM segment_aggregates
-ORDER BY predicted_clv DESC;
-
-
+    )                                                                         AS pct_of_customer_base,
+    ROUND(SUM(monetary)::NUMERIC, 2)                                          AS segment_revenue,
+    ROUND(
+        SUM(monetary)::NUMERIC * 100
+        / SUM(SUM(monetary)) OVER (),
+        2
+    )                                                                         AS pct_of_total_revenue,
+    ROUND(AVG(frequency::NUMERIC), 2)                                         AS avg_frequency,
+    ROUND(AVG(monetary::NUMERIC), 2)                                          AS avg_revenue
+FROM customer_rfm_segmented
+GROUP BY customer_segment
+ORDER BY pct_of_total_revenue DESC;

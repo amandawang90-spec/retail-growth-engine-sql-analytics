@@ -16,8 +16,7 @@ FROM cleaned_retail_main
 --Hibernating	        R=1, F=1-2, M=1-2	
 --Lost	                R=1, F=1, M=1	
 
--- Create a table to store the results permanently
-
+--Customer RFM Segmentation with Behavioral Scoring and Segment Classification
 CREATE TABLE customer_rfm_segmented AS
 WITH reference_date AS (
     SELECT MAX(invoice_date) + INTERVAL '1 day' AS ref_day
@@ -62,12 +61,13 @@ SELECT
 FROM rfm_scores;
 
 
---Part 2: The Summary (Analyze the Segments)
+--The Summary (Analyze the Segments)
 CREATE TABLE customer_rfm_segmentation_summary AS
 
 SELECT
     customer_segment,
     COUNT(*) AS customer_count,
+    SUM(frequency) AS total_orders,
     -- Calculate % of total customer base
     ROUND((COUNT(*) * 100.0 / SUM(COUNT(*)) OVER ()), 2) AS pct_of_total,
     -- Calculate averages to verify the segment logic
@@ -77,5 +77,37 @@ SELECT
 FROM customer_rfm_segmented
 GROUP BY customer_segment
 ORDER BY avg_monetary DESC; -- Sorting by money usually highlights the VIPs at the top
+
+--Customer RFM Summary Metrics (All Customers)
+CREATE TABLE customer_rfm_aggregates AS
+WITH reference_date AS (
+    SELECT MAX(invoice_date) + INTERVAL '1 day' AS ref_day
+    FROM cleaned_retail_main
+),
+base_rfm AS (
+    SELECT
+        customer_id,
+        MAX(invoice_date) AS last_purchase_date,
+        COUNT(DISTINCT invoice) AS frequency,
+        SUM(total_price) AS monetary
+    FROM cleaned_retail_main
+    GROUP BY customer_id
+),
+rfm_scores AS (
+    SELECT
+        b.customer_id,
+        b.frequency,
+        b.monetary,
+        DATE_PART('day', r.ref_day - b.last_purchase_date) AS recency_days
+    FROM base_rfm b
+    CROSS JOIN reference_date r
+)
+SELECT
+    COUNT(*) AS total_customer,
+    ROUND(AVG(monetary)::numeric, 2) AS avg_monetary,
+    ROUND(AVG(frequency)::numeric, 2) AS avg_frequency,
+    ROUND(AVG(recency_days)::numeric, 1) AS avg_recency_days
+FROM rfm_scores;
+
 
 

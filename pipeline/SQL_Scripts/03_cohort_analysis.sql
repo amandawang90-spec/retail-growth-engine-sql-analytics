@@ -1,9 +1,5 @@
--- Phase 3: Churn & Retention Analysis
-
 -- Defining the "Churn Point": No purchase in the last 90 days of the dataset.
-
 CREATE TABLE churned_or_not AS
-
 WITH study_end AS (
     SELECT MAX(invoice_date) + INTERVAL '1 day' AS ref_day
     FROM cleaned_retail_main
@@ -29,7 +25,6 @@ SELECT * FROM churn_base;
 -- Monthly Retention & Churn Rate by Cohort (1-12 Months)
 
 CREATE TABLE churn_and_retention_rate_by_cohort AS
-
 WITH first_purchase AS (
     SELECT
         customer_id,
@@ -73,12 +68,11 @@ WHERE month_number BETWEEN 1 AND 12
 ORDER BY cohort_month, month_number;
 
 
---Step 2: Monthly Churn & Retention Rate by RFM Segment (Months 1–12) 
+--Monthly Churn & Retention Rate by RFM Segment (Months 1–12) 
 
 --Define RFM Segments
 
 CREATE TABLE retention_rates_by_rfm_segments AS
-
 WITH reference_date AS (
     SELECT MAX(invoice_date) + INTERVAL '1 day' AS ref_day
     FROM cleaned_retail_main

@@ -1,0 +1,80 @@
+-- PHASE 5B: PREDICTIVE CUSTOMER LIFETIME VALUE ANALYSIS
+-- CLV = (Average Order Value × Purchase Frequency) / Churn Rate
+-- Customer Lifespan = 1 / Churn Rate
+
+CREATE TABLE predictive_clv_analysis AS
+WITH reference_date AS (
+    SELECT MAX(invoice_date) + INTERVAL '1 day' AS ref_day
+    FROM cleaned_retail_main
+),
+base_rfm AS (
+    SELECT
+        customer_id,
+        MAX(invoice_date)                AS last_purchase_date,
+        COUNT(DISTINCT invoice)::NUMERIC AS frequency,
+        SUM(total_price)::NUMERIC        AS monetary
+    FROM cleaned_retail_main
+    GROUP BY customer_id
+),
+rfm_scores AS (
+    SELECT
+        b.customer_id,
+        b.frequency,
+        b.monetary,
+        b.last_purchase_date,
+        DATE_PART('day', r.ref_day - b.last_purchase_date)::NUMERIC                      AS recency_days,
+        NTILE(5) OVER (ORDER BY DATE_PART('day', r.ref_day - b.last_purchase_date) DESC) AS r_score,
+        NTILE(5) OVER (ORDER BY b.frequency ASC)                                          AS f_score,
+        NTILE(5) OVER (ORDER BY b.monetary ASC)                                           AS m_score
+    FROM base_rfm b
+    CROSS JOIN reference_date r
+),
+rfm_final AS (
+    SELECT
+        *,
+        CASE
+            WHEN r_score = 1 AND f_score = 1 AND m_score = 1                                THEN 'Lost'
+            WHEN r_score = 1 AND f_score BETWEEN 1 AND 2 AND m_score BETWEEN 1 AND 2       THEN 'Hibernating'
+            WHEN r_score <= 2 AND f_score >= 3 AND m_score >= 3                             THEN 'At-Risk'
+            WHEN r_score BETWEEN 2 AND 3 AND f_score >= 3                                   THEN 'Needs Attention'
+            WHEN r_score >= 4 AND f_score BETWEEN 1 AND 2                                   THEN 'Promising'
+            WHEN r_score >= 4 AND f_score BETWEEN 2 AND 3 AND m_score >= 3                  THEN 'Potential Loyalists'
+            WHEN f_score <= 3 AND m_score >= 4                                               THEN 'Big Spenders'
+            WHEN r_score >= 4 AND f_score >= 4 AND m_score >= 4                             THEN 'Champions'
+            WHEN r_score >= 3 AND f_score >= 4 AND m_score >= 3                             THEN 'Loyal'
+            ELSE 'General/Other'
+        END AS customer_segment
+    FROM rfm_scores
+),
+segment_aggregates AS (
+    SELECT
+        f.customer_segment,
+        COUNT(DISTINCT f.customer_id)                  AS total_customers,
+        SUM(f.monetary) / NULLIF(SUM(f.frequency), 0) AS avg_order_value,
+        AVG(f.frequency)                               AS avg_frequency,
+        COUNT(
+            CASE
+                WHEN DATE_PART('day', r.ref_day - f.last_purchase_date) > 90
+                THEN 1
+            END
+        )::NUMERIC / COUNT(*)                          AS churn_rate
+    FROM rfm_final f
+    CROSS JOIN reference_date r
+    GROUP BY f.customer_segment
+)
+SELECT
+    customer_segment,
+    total_customers,
+    ROUND(avg_order_value::NUMERIC, 2)                                           AS aov,
+    ROUND(avg_frequency::NUMERIC, 2)                                             AS avg_frequency,
+    ROUND(churn_rate::NUMERIC, 2)                                                AS segment_churn_rate,
+    ROUND((1 - churn_rate)::NUMERIC, 2)                                          AS segment_retention_rate,
+    ROUND((3 / GREATEST(churn_rate, 0.001))::NUMERIC, 2)                         AS avg_customer_lifespan_months,
+    ROUND(
+        (avg_order_value * avg_frequency / GREATEST(churn_rate, 0.001))::NUMERIC,
+        2
+    )                                                                             AS predicted_clv
+FROM segment_aggregates
+ORDER BY predicted_clv DESC;
+
+

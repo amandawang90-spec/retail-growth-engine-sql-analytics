@@ -56,6 +56,7 @@ ORDER BY revenue_after_winback DESC;
 
 
 -- WIN-BACK GLOBAL SUMMARY
+CREATE TABLE winback_analysis_summary AS
 SELECT
     COUNT(DISTINCT customer_id)                            AS total_winback_customers,
     ROUND(AVG(gap_days)::NUMERIC, 1)                      AS avg_gap_days,
@@ -68,6 +69,7 @@ FROM winback_analysis;
 
 
 -- WIN-BACK BY GAP BUCKET
+CREATE TABLE winback_analysis_by_gap_bucket AS
 SELECT
     CASE
         WHEN gap_days BETWEEN 91 AND 120   THEN '91-120 days'

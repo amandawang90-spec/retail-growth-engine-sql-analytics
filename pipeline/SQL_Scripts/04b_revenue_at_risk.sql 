@@ -2,7 +2,6 @@
 -- Goal: Identify how much revenue is at risk from churned customers per segment.
 
 CREATE TABLE revenue_at_risk_and_segment_attrition AS
-
 WITH reference_date AS (
     SELECT MAX(invoice_date) + INTERVAL '1 day' AS ref_day
     FROM cleaned_retail_main

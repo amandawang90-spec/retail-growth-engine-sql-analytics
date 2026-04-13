@@ -2,7 +2,6 @@
 -- Goal: Did customers move between RFM segments between Year 1 (2010) and Year 2 (2011)?
 
 CREATE TABLE segment_migration AS
-
 WITH year1_data AS (
     SELECT
         customer_id,
@@ -101,7 +100,6 @@ ORDER BY y1.segment_year1, customer_count DESC;
 
 -- MIGRATION SUMMARY
 CREATE TABLE segment_migration_summary AS
-
 SELECT
     migration_type,
     COUNT(*)                                                   AS customer_count,

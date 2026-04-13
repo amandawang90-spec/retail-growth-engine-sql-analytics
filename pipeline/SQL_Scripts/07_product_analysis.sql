@@ -3,7 +3,6 @@
 
 -- 7A: Top 20 Products by Revenue
 CREATE TABLE top_products_by_revenue AS
-
 SELECT
     stock_code,
     description,
@@ -21,7 +20,6 @@ LIMIT 20;
 
 -- 7B : Product Return Analysis
 CREATE TABLE product_return_analysis AS
-
 WITH sales AS (
     SELECT
         stock_code,
@@ -70,7 +68,6 @@ LIMIT 30;
 -- 7C: Revenue by Product Category (using price bands)
 -- Goal: Understand the price distribution of the product catalog
 CREATE TABLE revenue_by_price_band AS
-
 SELECT
     CASE
         WHEN price < 1       THEN '< £1'

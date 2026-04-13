@@ -1,4 +1,4 @@
-# 🛍️ Online Retail II — Customer Analytics 
+# 🛍️ Online Retail II — Customer Analytics
 
 > A comprehensive end-to-end customer analytics project built on the UCI Online Retail II dataset, covering RFM segmentation, churn analysis, CLV prediction, cohort retention, Pareto analysis, seasonality, product analysis, segment migration, and win-back analysis.
 
@@ -14,6 +14,41 @@ This project aims to transform raw transactional retail data into actionable bus
 - What is the predicted lifetime value of each customer segment?
 - When is the optimal moment to intervene with a win-back campaign?
 - What seasonal and product patterns underpin the business?
+
+---
+
+## 📊 Dashboard
+
+An interactive Tableau dashboard has been built to visualise the RFM segmentation findings.
+
+| Dashboard | Link |
+|-----------|------|
+| **RFM Analysis — Customer Segmentation** | [View on Tableau Public](https://public.tableau.com/app/profile/jing.wang8227/viz/RMFAnalysisDashboard/RMFAnalysisDashboard) |
+
+### Dashboard Structure & Features
+
+The dashboard is organised into four sections with global Segment and Year filters:
+
+**Section 1 — KPI Overview**
+- Total customers, total orders, total revenue with year-over-year comparisons and sparklines
+- Avg recency, avg frequency, avg monetary as summary cards
+
+**Section 2 — Segment Overview**
+- **Treemap** — Customer distribution across all 10 RFM segments with RFM standard tooltip
+- **Scatter plot** — Avg R Score vs Avg M Score per segment, sized by bubble; toggle between raw RFM values and avg RFM scores
+
+**Section 3 — Revenue & Profitability**
+- **Parameterised bar chart** — Compare segments across total orders, total revenue, average revenue, average order value, and predicted CLV via a selector
+- **Combo chart (bar + line)** — Segment profitability showing % of customer base as bars and cumulative % of revenue as a line; switchable with a Pareto curve via chart selector
+
+**Section 4 — Churn & Risk**
+- **Bubble chart** — Revenue at risk by segment, bubble size represents revenue lost; filtered to churned segments only
+- **Churn rate heatmap** — Monthly churn rate per segment over 12 months with churn rate category filter (All / Low / Medium / High / Critical)
+
+**Section 5 — Geography & Win-back**
+- **Map** — Customer distribution by country with segment breakdown tooltip
+- **Donut chart** — UK vs Non-UK split by total revenue with customer count and AOV details
+- **Dot chart** — Win-back value by gap length (91–120, 121–180, 181–365, 365+ days) with insight annotation
 
 ---
 
@@ -49,7 +84,7 @@ This project aims to transform raw transactional retail data into actionable bus
 |-------|------|
 | **Data Storage & Querying** | PostgreSQL |
 | **Data Analysis & Modelling** | Python (pandas, numpy) |
-| **Visualisation** | Tableau / Power BI |
+| **Visualisation** | Tableau |
 
 ---
 
@@ -235,28 +270,28 @@ Segments are assigned using a `CASE` statement ordered from most specific to lea
 online-retail-ii-analytics/
 │
 ├── data/
-│   └── online_retail_ii.csv          # Raw dataset (not included, see Data Source)
+│   └── online_retail_ii.csv                        # Raw dataset (not included, see Data Source)
 │
 ├── sql/
-│   ├── 01_setup_and_cleaning.sql     # Phase 1: Cleaning & gold dataset
-│   ├── 02_rfm_segmentation.sql       # Phase 2: RFM scoring & segmentation
-│   ├── 03_churn_retention.sql        # Phase 3: Churn flag & cohort analysis
-│   ├── 04a_segment_profitability.sql # Phase 4A: Yield & profitability
-│   ├── 04b_revenue_at_risk.sql       # Phase 4B: Revenue at risk & attrition
-│   ├── 05a_pareto_analysis.sql       # Phase 5A: Pareto / revenue concentration
-│   ├── 05b_predictive_clv.sql        # Phase 5B: Predictive CLV
-│   ├── 06_seasonality.sql            # Phase 6: Monthly & seasonal trends
-│   ├── 07_product_analysis.sql       # Phase 7: Product revenue & returns
-│   ├── 08_segment_migration.sql      # Phase 8: Year-on-year segment migration
-│   └── 09_winback_analysis.sql       # Phase 9: Win-back events & recovery
+│   ├── 01_setup_and_cleaning.sql                   # Phase 1: Cleaning & gold dataset
+│   ├── 02_rfm_segmentation.sql                     # Phase 2: RFM scoring & segmentation
+│   ├── 03_churn_retention.sql                      # Phase 3: Churn flag & cohort analysis
+│   ├── 04a_segment_profitability.sql               # Phase 4A: Yield & profitability
+│   ├── 04b_revenue_at_risk.sql                     # Phase 4B: Revenue at risk & attrition
+│   ├── 05a_pareto_analysis.sql                     # Phase 5A: Pareto / revenue concentration
+│   ├── 05b_predictive_clv.sql                      # Phase 5B: Predictive CLV
+│   ├── 06_seasonality.sql                          # Phase 6: Monthly & seasonal trends
+│   ├── 07_product_analysis.sql                     # Phase 7: Product revenue & returns
+│   ├── 08_segment_migration.sql                    # Phase 8: Year-on-year segment migration
+│   └── 09_winback_analysis.sql                     # Phase 9: Win-back events & recovery
 │
 ├── notebooks/
-│   └── Retail_Data_Ingestion_and_ETL.ipynb                # Python EDA and supporting analysis
+│   └── Retail_Data_Ingestion_and_ETL.ipynb         # Python data ingestion & ETL pipeline
 │
 ├── visualisations/
-│   └── dashboard.twbx                # Tableau / Power BI dashboard
+│   └── RMFAnalysisDashboard.twbx                   # Tableau dashboard (RFM Analysis)
 │
-└── README.md                         # This file
+└── README.md                                        # This file
 ```
 
 ---
@@ -303,10 +338,10 @@ Where:
 
 ## 👤 Author
 
-Built as a personal portfolio project demonstrating end-to-end customer analytics using SQL, Python, and BI visualisation tools.
+Built as a personal portfolio project demonstrating end-to-end customer analytics using SQL, Python, and Tableau.
 
 ---
 
 ## 📜 License
 
-This project is for educational and portfolio purposes. The underlying dataset is publicly available via the UCI Machine Learning Repository under their standard terms.
+This project is for portfolio purposes. The underlying dataset is publicly available via the UCI Machine Learning Repository under their standard terms.

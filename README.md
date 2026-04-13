@@ -272,24 +272,23 @@ online-retail-ii-analytics/
 ├── data/
 │   └── online_retail_ii.csv                        # Raw dataset (not included, see Data Source)
 │
-├── sql/
-│   ├── 01_setup_and_cleaning.sql                   # Phase 1: Cleaning & gold dataset
-│   ├── 02_rfm_segmentation.sql                     # Phase 2: RFM scoring & segmentation
-│   ├── 03_churn_retention.sql                      # Phase 3: Churn flag & cohort analysis
-│   ├── 04a_segment_profitability.sql               # Phase 4A: Yield & profitability
-│   ├── 04b_revenue_at_risk.sql                     # Phase 4B: Revenue at risk & attrition
-│   ├── 05a_pareto_analysis.sql                     # Phase 5A: Pareto / revenue concentration
-│   ├── 05b_predictive_clv.sql                      # Phase 5B: Predictive CLV
-│   ├── 06_seasonality.sql                          # Phase 6: Monthly & seasonal trends
-│   ├── 07_product_analysis.sql                     # Phase 7: Product revenue & returns
-│   ├── 08_segment_migration.sql                    # Phase 8: Year-on-year segment migration
-│   └── 09_winback_analysis.sql                     # Phase 9: Win-back events & recovery
-│
-├── notebooks/
-│   └── Retail_Data_Ingestion_and_ETL.ipynb         # Python data ingestion & ETL pipeline
+├── pipeline/
+│   ├── Retail_Data_Ingestion_and_ETL.ipynb         # Python data ingestion & ETL pipeline
+│   └── sql_scripts/
+│       ├── 01_setup_and_cleaning.sql               # Phase 1: Cleaning & gold dataset
+│       ├── 02_rfm_segmentation.sql                 # Phase 2: RFM scoring & segmentation
+│       ├── 03_churn_retention.sql                  # Phase 3: Churn flag & cohort analysis
+│       ├── 04a_segment_profitability.sql           # Phase 4A: Yield & profitability
+│       ├── 04b_revenue_at_risk.sql                 # Phase 4B: Revenue at risk & attrition
+│       ├── 05a_pareto_analysis.sql                 # Phase 5A: Pareto / revenue concentration
+│       ├── 05b_predictive_clv.sql                  # Phase 5B: Predictive CLV
+│       ├── 06_seasonality.sql                      # Phase 6: Monthly & seasonal trends
+│       ├── 07_product_analysis.sql                 # Phase 7: Product revenue & returns
+│       ├── 08_segment_migration.sql                # Phase 8: Year-on-year segment migration
+│       └── 09_winback_analysis.sql                 # Phase 9: Win-back events & recovery
 │
 ├── visualisations/
-│   └── RMFAnalysisDashboard.twbx                   # Tableau dashboard (RFM Analysis)
+│   └── RMFAnalysisDashboard.twb                   # Tableau dashboard (RFM Analysis)
 │
 └── README.md                                        # This file
 ```

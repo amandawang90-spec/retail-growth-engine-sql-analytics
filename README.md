@@ -339,7 +339,7 @@ online-retail-ii-analytics/
 │   └── Retail_Data_Ingestion_and_ETL.ipynb         # Python data ingestion & ETL pipeline
 │
 ├── visualisations/
-│   └── RFMAnalysisDashboard.twbx                   # Tableau dashboard (RFM Analysis)
+│   └── RFM Analysis for Target Marketing Strategies# Tableau dashboard (RFM Analysis)
 │
 └── README.md                                        # This file
 ```

@@ -23,32 +23,30 @@ An interactive Tableau dashboard has been built to visualise the RFM segmentatio
 
 | Dashboard | Link |
 |-----------|------|
-| **RFM Analysis — Customer Segmentation** | [View on Tableau Public](https://public.tableau.com/app/profile/jing.wang8227/viz/RMFAnalysisDashboard/RMFAnalysisDashboard) |
+| **RFM Analysis — Target Marketing Strategies** | [View on Tableau Public](https://public.tableau.com/app/profile/jing.wang8227/viz/RFMAnalysisforTargetMarketingStrategies/Dashboard1) |
 
 ### Dashboard Structure & Features
 
-The dashboard is organised into four sections with global Segment and Year filters:
+The dashboard is organised into three pages with a global Customer Segment filter and navigation buttons:
 
-**Section 1 — KPI Overview**
-- Total customers, total orders, total revenue with year-over-year comparisons and sparklines
-- Avg recency, avg frequency, avg monetary as summary cards
+**Page 1 — Customer Overview**
+- **KPI strip** — Total customers, avg recency, avg frequency, avg monetary
+- **Treemap** — Customer distribution across all 11 RFM segments (acts as interactive filter)
+- **Scatter plot (RFM Values)** — Avg recency days vs avg monetary per segment, sized by avg frequency; with 90-day churn threshold reference line
+- **Scatter plot (RFM Scores)** — Avg R score vs avg M score per segment, sized by avg F score; same concept using normalised 1–5 scores
+- **Customer list table** — Individual customer view with RFM score, recency, frequency and monetary bar
 
-**Section 2 — Segment Overview**
-- **Treemap** — Customer distribution across all 10 RFM segments with RFM standard tooltip
-- **Scatter plot** — Avg R Score vs Avg M Score per segment, sized by bubble; toggle between raw RFM values and avg RFM scores
+**Page 2 — What Are They Worth?**
+- **KPI strip** — Total revenue, total orders, avg CLV, avg AOV
+- **Segment performance comparison** — Customer share %, revenue share %, order share % and AOV for the selected segment vs all others; updates dynamically via segment parameter selector
+- **Summary text table** — Full segment breakdown showing total customers, customer share %, total orders, order share %, total revenue, revenue share %, avg recency, avg frequency and avg monetary; provides stakeholders with a complete at-a-glance reference
 
-**Section 3 — Revenue & Profitability**
-- **Parameterised bar chart** — Compare segments across total orders, total revenue, average revenue, average order value, and predicted CLV via a selector
-- **Combo chart (bar + line)** — Segment profitability showing % of customer base as bars and cumulative % of revenue as a line; switchable with a Pareto curve via chart selector
-
-**Section 4 — Churn & Risk**
-- **Bubble chart** — Revenue at risk by segment, bubble size represents revenue lost; filtered to churned segments only
-- **Churn rate heatmap** — Monthly churn rate per segment over 12 months with churn rate category filter (All / Low / Medium / High / Critical)
-
-**Section 5 — Geography & Win-back**
-- **Map** — Customer distribution by country with segment breakdown tooltip
-- **Donut chart** — UK vs Non-UK split by total revenue with customer count and AOV details
-- **Dot chart** — Win-back value by gap length (91–120, 121–180, 181–365, 365+ days) with insight annotation
+**Page 3 — Risk + Action Plan**
+- **KPI strip** — Revenue at risk, churned customers, avg churn rate
+- **Bubble chart** — Revenue at risk by segment; bubble size represents total revenue lost; acts as interactive filter
+- **Top 10 at-risk customers bar chart** — Updates dynamically when a segment bubble is clicked; shows highest-value churned customers within the selected segment
+- **Scatter plot** — Churn rate vs avg monetary per segment; reveals which segments combine high value with high churn risk
+- **Urgency & win-back strategy table** — Summarises urgency level per segment and recommended win-back tactics; designed as a stakeholder-ready action reference
 
 ---
 
@@ -103,7 +101,9 @@ Phase 1: Data Preparation
         ▼
 cleaned_retail_main (Gold Dataset)
         │
-        ├──► Phase 2: RFM Segmentation
+        ▼
+Phase 2: RFM Segmentation → rfm_segment_analysis_whole_period (Centre Table)
+        │
         ├──► Phase 3: Churn & Retention Analysis
         ├──► Phase 4A: Segment Yield & Profitability
         ├──► Phase 4B: Revenue at Risk
@@ -132,8 +132,8 @@ cleaned_retail_main (Gold Dataset)
 | Phase | Analysis | Output Table(s) |
 |-------|----------|----------------|
 | **1** | Data Preparation & Cleaning | `cleaned_retail_main` |
-| **2** | RFM Segmentation | `customer_rfm_segmented`, `customer_rfm_segmentation_summary` |
-| **3** | Churn & Cohort Retention | `churned_or_not`, `churn_and_retention_rate_by_cohort` |
+| **2** | RFM Segmentation | `rfm_segment_analysis_whole_period`, `rfm_segment_summary` |
+| **3** | Churn & Cohort Retention | `churned_or_not`, `churn_and_retention_rate_by_cohort`, `retention_rates_by_rfm_segments` |
 | **4A** | Segment Yield & Profitability | `segment_yield_and_profitability` |
 | **4B** | Revenue at Risk & Attrition | `revenue_at_risk_and_segment_attrition` |
 | **5A** | Pareto Analysis | `pareto_analysis` |
@@ -147,89 +147,138 @@ cleaned_retail_main (Gold Dataset)
 
 ## 📐 RFM Segmentation Standard
 
-RFM scores are calculated using `NTILE(5)` on the cleaned dataset, with a reference date of `MAX(invoice_date) + 1 day`.
+RFM scores are calculated using `NTILE(5)` on the whole-period dataset, with a reference date of `MAX(invoice_date) + 1 day`. Segmentation follows the **RFM.io / Putler industry standard** using exact `rfm_combined` score mappings.
 
-| Dimension | Score Direction | Score 5 Means |
-|-----------|----------------|--------------|
-| **Recency** | DESC (fewest days = highest score) | Purchased very recently |
-| **Frequency** | ASC (highest count = highest score) | Purchases very often |
-| **Monetary** | ASC (highest spend = highest score) | Spends the most |
+| Dimension | NTILE Order | Score 5 Means |
+|-----------|-------------|--------------|
+| **Recency** | `ORDER BY recency_days DESC` | Purchased very recently |
+| **Frequency** | `ORDER BY frequency ASC` | Purchases very often |
+| **Monetary** | `ORDER BY monetary ASC` | Spends the most |
 
 ### Segment Definitions
 
-Segments are assigned using a `CASE` statement ordered from most specific to least specific to prevent overlap:
+Segments are assigned using exact `rfm_combined` score mappings (RFM.io / Putler standard):
 
-| Segment | R Score | F Score | M Score |
-|---------|---------|---------|---------|
-| **Lost** | = 1 | = 1 | = 1 |
-| **Hibernating** | = 1 | 1–2 | 1–2 |
-| **At-Risk** | ≤ 2 | ≥ 3 | ≥ 3 |
-| **Needs Attention** | 2–3 | ≥ 3 | — |
-| **Promising** | ≥ 4 | 1–2 | — |
-| **Potential Loyalists** | ≥ 4 | 2–3 | ≥ 3 |
-| **Big Spenders** | — | ≤ 3 | ≥ 4 |
-| **Champions** | ≥ 4 | ≥ 4 | ≥ 4 |
-| **Loyal** | ≥ 3 | ≥ 4 | ≥ 3 |
-| **General/Other** | — | — | — |
+| Segment | RFM Score Combinations |
+|---------|----------------------|
+| **Champions** | 555, 554, 544, 545, 454, 455, 445 |
+| **Loyal** | 543, 444, 435, 355, 354, 345, 344, 335 |
+| **Potential Loyalists** | 553, 551, 552, 541, 542, 533, 532, 531, 452, 451, 442, 441, 431, 453, 433, 432, 423, 353, 352, 351, 342, 341, 333, 323 |
+| **Recent Customers** | 512, 511, 422, 421, 412, 411, 311 |
+| **Promising** | 525, 524, 523, 522, 521, 515, 514, 513, 425, 424, 413, 414, 415, 315, 314, 313 |
+| **Need Attention** | 535, 534, 443, 434, 343, 334, 325, 324 |
+| **About to Sleep** | 331, 321, 312, 221, 213 |
+| **At-Risk** | 255, 254, 245, 244, 253, 252, 243, 242, 235, 234, 225, 224, 153, 152, 145, 143, 142, 135, 134, 133, 125, 124 |
+| **Cannot Lose** | 155, 154, 144, 214, 215, 115, 114, 113 |
+| **Hibernating** | 332, 322, 231, 241, 251, 233, 232, 223, 222, 132, 123, 122, 212, 211 |
+| **Lost** | 111, 112, 121, 131, 141, 151 |
+| **General/Other** | All remaining combinations |
 
-> ⚠️ **CASE order matters.** Always place most specific conditions first (Lost before Hibernating, Champions before Loyal) to prevent overlapping segment assignment.
+### Macro Segments
+
+For strategic planning, segments are grouped into four macro categories:
+
+| Macro Segment | Segments |
+|---------------|---------|
+| **Loyal** | Champions, Loyal, Potential Loyalists |
+| **Promising** | Recent Customers, Promising, Need Attention |
+| **At Risk** | About to Sleep, At-Risk, Cannot Lose |
+| **Lost** | Hibernating, Lost |
+
+### Segment Summary
+
+| Segment | Customers | % Customers | % Revenue | Avg Monetary | Avg Recency (days) | AOV |
+|---------|-----------|-------------|-----------|--------------|-------------------|-----|
+| Champions | 1,139 | 19.46% | 66.70% | £10,217 | 17.4 | £554 |
+| Loyal | 666 | 11.38% | 11.97% | £3,136 | 74.2 | £402 |
+| At-Risk | 496 | 8.47% | 7.91% | £2,783 | 358.5 | £486 |
+| Cannot Lose | 118 | 2.02% | 1.46% | £2,157 | 490.4 | £475 |
+| Promising | 175 | 2.99% | 1.95% | £1,943 | 32.1 | £1,245 |
+| Need Attention | 322 | 5.50% | 2.76% | £1,495 | 68.5 | £367 |
+| Potential Loyalists | 591 | 10.10% | 2.52% | £743 | 54.2 | £231 |
+| Hibernating | 938 | 16.03% | 2.71% | £504 | 326.3 | £244 |
+| About to Sleep | 361 | 6.17% | 0.62% | £302 | 208.1 | £247 |
+| Recent Customers | 318 | 5.43% | 0.46% | £251 | 46.7 | £211 |
+| Lost | 729 | 12.46% | 0.95% | £227 | 564.3 | £204 |
 
 ---
 
 ## 🔑 Key Findings
 
 ### 1. Revenue Concentration is Extreme
-- Champions (22% of customers) generate **68.4% of total revenue** at £9,208 average spend — far exceeding the classic 80/20 Pareto rule
-- The top 10% of customers drive **51.98% of revenue**; the top 1% (59 customers) alone account for **32.09%**
-- A single customer spent **£608,821** — likely a wholesale/B2B buyer representing 3.49% of total revenue
-- The bottom 50% of customers contribute just **6.46% of revenue**
 
-### 2. The Business Faces Growing Retention Pressure
-- **£3.38M in revenue** has already been lost to churned customers
-- At-Risk (46%) and Needs Attention (31.5%) account for **77.55% of all lost revenue**
-- New customer acquisition declined **~50% from 2010 to 2011** (280 → 130 new customers/month)
-- Revenue remained stable, meaning **existing customers are compensating** — making retention business-critical
-- Only **10.5% of customers** remained in the same RFM segment across both years; downgraded customers (21%) slightly outnumber upgraded ones (20%)
+- **Champions** (19.46% of customers) generate **66.7% of total revenue** at £10,217 average spend
+- The **top 1%** (58 customers) account for **31.93%** of total revenue
+- The **top 20%** of customers drive **77.17%** of revenue
+- The **bottom 50%** of customers contribute just **6.47%** of revenue
 
-### 3. At-Risk and Big Spenders Are the Most Urgent Targets
-- At-Risk customers average £2,532 spend but haven't purchased in **355 days** — 100% churn rate
-- Big Spenders have the highest AOV at **£1,613 per order** but 78.57% have already churned; only 18 remain active
-- Combined these two segments represent **£1.73M in revenue from actively disengaging customers**
+### 2. The Business Faces Severe Retention Pressure
 
-### 4. Segment Labels Don't Always Reflect Behaviour
-- **Loyal** customers show a retention decline from 27.6% → 8.6% over 12 months — weaker than Champions and At-Risk in early months
-- **Potential Loyalists** fail to convert — retention drops from 25.8% → 2.4% by month 10
-- **Promising** customers are largely one-time buyers — retention falls below 1% by month 10
-- **Needs Attention** is the most volatile and recoverable segment with balanced upgrade/downgrade rates
+- **£3.38M** in revenue is at risk from churned customers
+- At-Risk (40.81%) and Loyal (23.99%) account for **64.8% of all lost revenue**
+- At-Risk and Cannot Lose segments have **100% churn rate** — all customers inactive 90+ days
+- Champions show **0% churn** — the only fully active segment
 
-### 5. Seasonality is Structural and Predictable
+### 3. Cannot Lose Segment is the Most Urgent Target
+
+- Cannot Lose customers average **490 days** since last purchase — highest recency of any valuable segment
+- Despite high average monetary (£2,157) and AOV (£475), all 118 customers have churned
+- Combined At-Risk + Cannot Lose represents **£1.63M** in lost revenue from high-value disengaging customers
+
+### 4. Promising Segment Has Surprisingly High AOV
+
+- Despite being a low-frequency segment (avg 1.56 orders), Promising customers have the **highest AOV at £1,245**
+- Predicted CLV of £14,011 (second highest) driven by high AOV and low churn rate (6.86%)
+- These are high-value occasional buyers worth targeting with re-engagement campaigns
+
+### 5. CLV Concentration Mirrors Revenue Concentration
+
+| Segment | Predicted CLV | AOV | Churn Rate |
+|---------|--------------|-----|------------|
+| Champions | £106,057 | £554 | 4.76% (floored) |
+| Promising | £14,011 | £1,245 | 6.86% |
+| Loyal | £4,873 | £402 | 31.83% |
+| Need Attention | £2,706 | £367 | 27.33% |
+| Potential Loyalists | £1,939 | £231 | 18.95% |
+| At-Risk | £1,390 | £486 | 99% |
+| Recent Customers | £1,161 | £211 | 10.69% |
+| Cannot Lose | £1,078 | £475 | 99% |
+| Hibernating | £261 | £244 | 95.42% |
+| About to Sleep | £198 | £247 | 75.35% |
+| Lost | £113 | £204 | 99% |
+
+### 6. Seasonality is Structural and Predictable
+
 - Q4 (September–November) consistently generates the highest revenue, peaking in November
 - The August → September jump is the sharpest of the year at **+42% month-over-month**
 - January and February are consistently the weakest months, dropping **20–35% from December**
 - The pattern repeats reliably across both years — driven by the gift/novelty nature of the catalog
 
-### 6. The Business is a High-Volume, Low-Price Model
+### 7. The Business is a High-Volume, Low-Price Model
+
 - **66.94% of revenue** comes from products priced £1–£5
 - No single product exceeds **1.64% of total revenue** — healthy catalog diversification
 - Premium products (£20+) represent less than **1.2% of revenue** despite 93 SKUs
 
-### 7. International Customers Are Fewer but More Valuable
+### 8. International Customers Are Fewer but More Valuable
+
 - Non-UK customers (519) have an AOV of **£36 vs £20 for UK** customers — 78% higher
 - Netherlands (£110), Australia (£93), Japan (£97), and Denmark (£88) are the highest-value international markets
 - Sample sizes outside the UK are too small for RFM/CLV segmentation but the AOV gap is commercially significant
 
-### 8. Win-back is Commercially Worthwhile but Time-Sensitive
+### 9. Win-back is Commercially Worthwhile but Time-Sensitive
+
 - **3,025 win-back events** generated **£7.77M** in recovered revenue
 - Post-winback revenue drops sharply with gap length:
 
-| Gap | Customers | Avg Revenue After Winback |
+| Gap | Customers | Avg Revenue After Win-back |
 |-----|-----------|--------------------------|
 | 91–120 days | 1,202 | £2,143 |
 | 121–180 days | 1,326 | £1,452 |
 | 181–365 days | 1,437 | £1,151 |
 | 365+ days | 320 | £449 |
 
-- **Day 91** is the optimal win-back trigger — customers returning within 91–120 days generate nearly **5x more** than those returning after 365+ days
+- **Day 91** is the optimal win-back trigger — customers returning within 91–120 days generate nearly **5× more** than those returning after 365+ days
 
 ---
 
@@ -239,27 +288,28 @@ Segments are assigned using a `CASE` statement ordered from most specific to lea
 
 | Segment | Priority | Budget % | Goal |
 |---------|----------|---------|------|
-| Champions | Tier 1 — Protect | 30–35% | Retention |
-| Needs Attention | Tier 2 — Recover | 25–30% | Re-engagement |
-| At-Risk | Tier 2 — Recover | 15–20% | Win-back |
-| Potential Loyalists | Tier 3 — Develop | 8–10% | Upgrade |
-| Promising | Tier 3 — Develop | 5–8% | 2nd purchase |
-| Big Spenders | Tier 4 — Selective | 3–5% | Personal outreach |
-| General/Other | Tier 4 — Monitor | 2–3% | Low-cost campaigns |
-| Loyal | Tier 5 — Passive | 1–2% | Standard comms |
-| Hibernating | Tier 5 — Minimal | 1% | Single reactivation |
-| Lost | Tier 5 — Minimal | 0–1% | Annual touch only |
+| Champions | Tier 1 — Protect | 30–35% | Retention & VIP programme |
+| At-Risk | Tier 2 — Recover | 20–25% | Day-91 win-back campaign |
+| Cannot Lose | Tier 2 — Recover | 10–15% | Urgent personal outreach |
+| Loyal | Tier 3 — Nurture | 8–10% | Sustain & upsell |
+| Potential Loyalists | Tier 3 — Develop | 5–8% | Drive 2nd/3rd purchase |
+| Promising | Tier 3 — Develop | 5–8% | Re-engagement — high AOV |
+| Need Attention | Tier 4 — Monitor | 3–5% | Re-engagement campaigns |
+| Recent Customers | Tier 4 — Develop | 2–3% | Onboarding & 2nd purchase |
+| About to Sleep | Tier 5 — Minimal | 1–2% | Single reactivation attempt |
+| Hibernating | Tier 5 — Minimal | 1% | Annual touch only |
+| Lost | Tier 5 — Minimal | 0–1% | Write-off or final attempt |
 
 ### Specific Recommendations
 
-1. **Protect Champions at all costs** — 68.4% of revenue depends on 22% of customers. Any Champions retention programme has outsized ROI.
-2. **Trigger win-back campaigns at day 91** — the optimal intervention point before post-winback value deteriorates significantly.
-3. **Prioritise Needs Attention for re-engagement** — highest recoverable revenue pool with the most balanced upgrade/downgrade split.
-4. **Act immediately on Big Spenders** — only 18 remain active. Each lost Big Spender represents ~£2,579 in revenue.
-5. **Deprioritise Hibernating and Lost** — retention below 4% and diminishing post-winback value makes investment commercially unjustifiable.
-6. **Plan campaigns around seasonality** — September is the optimal launch month for retention campaigns, capturing the natural Q4 uplift before peak.
-7. **Investigate wholesale/B2B customers** — the extreme Pareto concentration and single-customer outlier (£608,821) suggests a B2B segment exists within the data that warrants separate treatment.
-8. **Intervene with Potential Loyalists within 3 months** — retention drops sharply from month 3 onward; early engagement is critical.
+1. **Protect Champions at all costs** — 19.46% of customers generate 66.7% of revenue. VIP rewards, early access, and personal account management are justified.
+2. **Trigger win-back campaigns at day 91** — avg £2,143 recovered vs £449 after 365+ days — a 5× difference.
+3. **Act immediately on Cannot Lose** — all 118 customers have churned despite averaging £2,157 spend. Personal outreach is warranted.
+4. **Re-engage Promising customers** — highest AOV at £1,245 and second-highest predicted CLV at £14,011. Only 6.86% churn rate makes these highly recoverable.
+5. **Develop Potential Loyalists within 3 months** — retention drops sharply from month 3; early incentives to drive repeat purchase are critical.
+6. **Deprioritise Hibernating and Lost** — 95%+ churn rate and low post-winback value makes sustained investment commercially unjustifiable.
+7. **Plan campaigns around seasonality** — September is the optimal launch month for retention campaigns, capturing the natural Q4 uplift before peak.
+8. **Investigate wholesale/B2B customers** — the extreme Pareto concentration (top 1% = 31.93% of revenue) suggests a B2B segment within the data that warrants separate treatment.
 9. **Experimental international budget** — allocate 2–3% outside main budget to Netherlands, Australia, and Japan given their significantly higher AOV.
 
 ---
@@ -272,23 +322,24 @@ online-retail-ii-analytics/
 ├── data/
 │   └── online_retail_ii.csv                        # Raw dataset (not included, see Data Source)
 │
-├── pipeline/
-│   ├── Retail_Data_Ingestion_and_ETL.ipynb         # Python data ingestion & ETL pipeline
-│   └── sql_scripts/
-│       ├── 01_setup_and_cleaning.sql               # Phase 1: Cleaning & gold dataset
-│       ├── 02_rfm_segmentation.sql                 # Phase 2: RFM scoring & segmentation
-│       ├── 03_churn_retention.sql                  # Phase 3: Churn flag & cohort analysis
-│       ├── 04a_segment_profitability.sql           # Phase 4A: Yield & profitability
-│       ├── 04b_revenue_at_risk.sql                 # Phase 4B: Revenue at risk & attrition
-│       ├── 05a_pareto_analysis.sql                 # Phase 5A: Pareto / revenue concentration
-│       ├── 05b_predictive_clv.sql                  # Phase 5B: Predictive CLV
-│       ├── 06_seasonality.sql                      # Phase 6: Monthly & seasonal trends
-│       ├── 07_product_analysis.sql                 # Phase 7: Product revenue & returns
-│       ├── 08_segment_migration.sql                # Phase 8: Year-on-year segment migration
-│       └── 09_winback_analysis.sql                 # Phase 9: Win-back events & recovery
+├── sql/
+│   ├── 01_setup_and_cleaning.sql                   # Phase 1: Cleaning & gold dataset
+│   ├── 02_rfm_segmentation.sql                     # Phase 2: RFM scoring & segmentation
+│   ├── 03_churn_retention.sql                      # Phase 3: Churn flag & cohort analysis
+│   ├── 04a_segment_profitability.sql               # Phase 4A: Yield & profitability
+│   ├── 04b_revenue_at_risk.sql                     # Phase 4B: Revenue at risk & attrition
+│   ├── 05a_pareto_analysis.sql                     # Phase 5A: Pareto / revenue concentration
+│   ├── 05b_predictive_clv.sql                      # Phase 5B: Predictive CLV
+│   ├── 06_seasonality.sql                          # Phase 6: Monthly & seasonal trends
+│   ├── 07_product_analysis.sql                     # Phase 7: Product revenue & returns
+│   ├── 08_segment_migration.sql                    # Phase 8: Year-on-year segment migration
+│   └── 09_winback_analysis.sql                     # Phase 9: Win-back events & recovery
+│
+├── notebooks/
+│   └── Retail_Data_Ingestion_and_ETL.ipynb         # Python data ingestion & ETL pipeline
 │
 ├── visualisations/
-│   └── RMFAnalysisDashboard.twb                   # Tableau dashboard (RFM Analysis)
+│   └── RFMAnalysisDashboard.twbx                   # Tableau dashboard (RFM Analysis)
 │
 └── README.md                                        # This file
 ```
@@ -302,8 +353,9 @@ online-retail-ii-analytics/
 | Decision | Rationale |
 |----------|-----------|
 | Reference date: `MAX(invoice_date) + 1 day` | Ensures the most recent customer gets recency > 0; consistent across all phases |
+| Whole-period RFM (not yearly) | One segment per customer based on full dataset; avoids duplication and supports CLV/AOV calculations |
+| `rfm_combined IN (...)` segmentation | Exact industry-standard score mappings; eliminates overlap and ambiguity from conditional CASE logic |
 | Churn threshold: 90 days (Phase 3 & 4B) | Standard retail inactivity window; actionable and consistent |
-| Churn threshold: 180 days (Phase 5B CLV) | Smooths Christmas seasonality noise for stable CLV formula inputs |
 | NTILE(5) for RFM scoring | Produces equal-sized quintile buckets; robust to skewed distributions |
 | `NUMERIC` casting at source | Prevents PostgreSQL `ROUND(double precision, integer)` type errors throughout |
 | `CROSS JOIN` for reference date | Explicit and readable alternative to correlated subqueries |
@@ -311,11 +363,11 @@ online-retail-ii-analytics/
 
 ### Known Data Quality Issues
 
-- **Return rate anomalies**: Some products show return rates exceeding 100% due to cancellation invoices referencing sales that predate the dataset window. Return rates are capped at 100% and should be interpreted with caution.
+- **Return rate anomalies**: Some products show return rates exceeding 100% due to cancellation invoices referencing sales that predate the dataset window.
 - **December 2011 incomplete**: The dataset ends partway through December 2011, making that month's figures non-comparable to prior Decembers.
 - **December 2009 acquisition spike**: The dataset starts in December 2009, causing all pre-existing customers to appear as new acquisitions in that month — a data artifact, not a real spike.
-- **Wholesale/B2B outliers**: Extremely high single-order quantities (e.g. 80,995 units of a single product in one invoice) suggest the presence of wholesale buyers within the otherwise retail dataset.
-- **CLV formula limitation**: Segments with 0% observed churn within the 180-day window hit the 0.001 floor, producing a capped CLV of £3,000. For these segments, historical average revenue (Phase 4A) is a more reliable value indicator.
+- **Wholesale/B2B outliers**: Extremely high single-order quantities suggest the presence of wholesale buyers within the otherwise retail dataset.
+- **Champions CLV**: Champions show 0% observed churn — the 0.001 floor produces an illustrative CLV of £106,057. Historical average revenue (Phase 4A) is a more reliable value indicator for this segment.
 
 ---
 
@@ -326,9 +378,9 @@ CLV = (Average Order Value × Purchase Frequency) / Churn Rate
 
 Where:
   Average Order Value  = Segment Total Revenue / Segment Total Orders
-  Purchase Frequency   = Average orders per customer in segment
-  Churn Rate           = % of customers with no purchase in last 180 days
-  Customer Lifespan    = 1 / Churn Rate (in 180-day cycles)
+  Purchase Frequency   = Average annual orders per customer in segment
+  Churn Rate           = % of customers with no purchase in last 90 days
+  Customer Lifespan    = 1 / Churn Rate (in years)
 ```
 
 > For segments with 0% churn, a floor of 0.001 (0.1%) is applied to allow the formula to compute. Results for these segments should be treated as illustrative rather than predictive.
@@ -343,4 +395,4 @@ Built as a personal portfolio project demonstrating end-to-end customer analytic
 
 ## 📜 License
 
-This project is for portfolio purposes. The underlying dataset is publicly available via the UCI Machine Learning Repository under their standard terms.
+This project is for educational and portfolio purposes. The underlying dataset is publicly available via the UCI Machine Learning Repository under their standard terms.

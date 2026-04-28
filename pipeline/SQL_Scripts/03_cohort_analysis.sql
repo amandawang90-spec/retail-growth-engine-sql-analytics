@@ -1,30 +1,30 @@
--- Defining the "Churn Point": No purchase in the last 90 days of the dataset.
-CREATE TABLE churned_or_not AS
+-- PHASE 3A: CHURN FLAG (90-DAY THRESHOLD)
+
+DROP TABLE IF EXISTS new_churned_or_not;
+
+CREATE TABLE new_churned_or_not AS
 WITH study_end AS (
     SELECT MAX(invoice_date) + INTERVAL '1 day' AS ref_day
     FROM cleaned_retail_main
-),
-churn_base AS (
-    SELECT
-        c.customer_id,
-        MAX(c.invoice_date)                                              AS last_purchase_date,
-        s.ref_day                                                        AS study_end_date,
-        DATE_PART('day', s.ref_day - MAX(c.invoice_date))                AS days_since_last_purchase,
-        CASE
-            WHEN DATE_PART('day', s.ref_day - MAX(c.invoice_date)) > 90
-            THEN 1
-            ELSE 0
-        END AS is_churned
-    FROM cleaned_retail_main c
-    CROSS JOIN study_end s
-    GROUP BY c.customer_id, s.ref_day
 )
-SELECT * FROM churn_base;
+SELECT
+    r.customer_id,
+    r.last_purchase_date,
+    s.ref_day                                                        AS study_end_date,
+    r.recency_days                                                   AS days_since_last_purchase,
+    r.customer_segment,
+    CASE
+        WHEN r.recency_days > 90 THEN 1
+        ELSE 0
+    END AS is_churned
+FROM new_rfm_segment_analysis r
+CROSS JOIN study_end s;
 
+-- PHASE 3B: COHORT RETENTION & CHURN (1-12 MONTHS)
 
--- Monthly Retention & Churn Rate by Cohort (1-12 Months)
+DROP TABLE IF EXISTS new_churn_and_retention_rate_by_cohort;
 
-CREATE TABLE churn_and_retention_rate_by_cohort AS
+CREATE TABLE new_churn_and_retention_rate_by_cohort AS
 WITH first_purchase AS (
     SELECT
         customer_id,
@@ -36,7 +36,7 @@ cohort_activity AS (
     SELECT
         f.customer_id,
         f.cohort_month,
-        (EXTRACT(year  FROM c.invoice_date) - EXTRACT(year  FROM f.cohort_month)) * 12 +
+        (EXTRACT(year FROM c.invoice_date) - EXTRACT(year FROM f.cohort_month)) * 12 +
         (EXTRACT(month FROM c.invoice_date) - EXTRACT(month FROM f.cohort_month)) AS month_number
     FROM first_purchase f
     JOIN cleaned_retail_main c ON f.customer_id = c.customer_id
@@ -57,65 +57,22 @@ survival_base AS (
     FROM retention_counts
 )
 SELECT
-    TO_CHAR(cohort_month, 'YYYY-MM')                                           AS cohort,
-    month_number                                                               AS month_number,
+    TO_CHAR(cohort_month, 'YYYY-MM')                                          AS cohort,
+    month_number                                                                AS month_age,
     active_customers,
     cohort_size,
-    ROUND(active_customers::NUMERIC / cohort_size * 100, 2)                  AS retention_rate_pct,
-    (100 - ROUND(active_customers::NUMERIC / cohort_size * 100, 2))          AS churn_rate_pct
+    ROUND(active_customers::NUMERIC / cohort_size * 100, 2)                   AS retention_rate_pct,
+    (100 - ROUND(active_customers::NUMERIC / cohort_size * 100, 2))           AS churn_rate_pct
 FROM survival_base
 WHERE month_number BETWEEN 1 AND 12
-ORDER BY cohort_month, month_number;
+ORDER BY cohort_month, month_age;
 
+-- PHASE 3C: RETENTION RATES BY RFM SEGMENTS (1-12 MONTHS)
 
---Monthly Churn & Retention Rate by RFM Segment (Months 1–12) 
+DROP TABLE IF EXISTS new_retention_rates_by_rfm_segments;
 
---Define RFM Segments
-
-CREATE TABLE retention_rates_by_rfm_segments AS
-WITH reference_date AS (
-    SELECT MAX(invoice_date) + INTERVAL '1 day' AS ref_day
-    FROM cleaned_retail_main
-),
-base_rfm AS (
-    SELECT
-        customer_id,
-        MAX(invoice_date)            AS last_purchase_date,
-        COUNT(DISTINCT invoice)      AS frequency,
-        SUM(total_price)             AS monetary
-    FROM cleaned_retail_main
-    GROUP BY customer_id
-),
-rfm_scores AS (
-    SELECT
-        b.customer_id,
-        b.frequency,
-        b.monetary,
-        DATE_PART('day', r.ref_day - b.last_purchase_date) AS recency_days,
-        NTILE(5) OVER (ORDER BY DATE_PART('day', r.ref_day - b.last_purchase_date) DESC) AS r_score,
-        NTILE(5) OVER (ORDER BY b.frequency ASC)                                          AS f_score,
-        NTILE(5) OVER (ORDER BY b.monetary ASC)                                           AS m_score
-    FROM base_rfm b
-    CROSS JOIN reference_date r
-),
-rfm_final AS (
-    SELECT
-        *,
-        CASE
-            WHEN r_score = 1 AND f_score = 1 AND m_score = 1                                THEN 'Lost'
-            WHEN r_score = 1 AND f_score BETWEEN 1 AND 2 AND m_score BETWEEN 1 AND 2        THEN 'Hibernating'
-            WHEN r_score <= 2 AND f_score >= 3 AND m_score >= 3                             THEN 'At-Risk'
-            WHEN r_score BETWEEN 2 AND 3 AND f_score >= 3                                   THEN 'Needs Attention'
-            WHEN r_score >= 4 AND f_score BETWEEN 1 AND 2                                   THEN 'Promising'
-            WHEN r_score >= 4 AND f_score BETWEEN 2 AND 3 AND m_score >= 3                  THEN 'Potential Loyalists'
-            WHEN f_score <= 3 AND m_score >= 4                                              THEN 'Big Spenders'
-            WHEN r_score >= 4 AND f_score >= 4 AND m_score >= 4                             THEN 'Champions'
-            WHEN r_score >= 3 AND f_score >= 4 AND m_score >= 3                             THEN 'Loyal'
-            ELSE 'General/Other'
-        END AS customer_segment
-    FROM rfm_scores
-),
-first_purchase AS (
+CREATE TABLE new_retention_rates_by_rfm_segments AS
+WITH first_purchase AS (
     SELECT
         customer_id,
         DATE_TRUNC('month', MIN(invoice_date)) AS cohort_month
@@ -127,19 +84,19 @@ cohort_size AS (
         r.customer_segment,
         COUNT(DISTINCT f.customer_id) AS total_customers
     FROM first_purchase f
-    JOIN rfm_final r ON f.customer_id = r.customer_id
+    JOIN new_rfm_segment_analysis r ON f.customer_id = r.customer_id
     GROUP BY r.customer_segment
 ),
 cohort_activity AS (
     SELECT
         f.customer_id,
         r.customer_segment,
-        (EXTRACT(year  FROM c.invoice_date) - EXTRACT(year  FROM f.cohort_month)) * 12 +
+        (EXTRACT(year FROM c.invoice_date) - EXTRACT(year FROM f.cohort_month)) * 12 +
         (EXTRACT(month FROM c.invoice_date) - EXTRACT(month FROM f.cohort_month)) AS month_number
     FROM first_purchase f
-    JOIN cleaned_retail_main c  ON f.customer_id = c.customer_id
-    JOIN rfm_final r             ON f.customer_id = r.customer_id
-    WHERE (EXTRACT(year  FROM c.invoice_date) - EXTRACT(year  FROM f.cohort_month)) * 12 +
+    JOIN cleaned_retail_main c ON f.customer_id = c.customer_id
+    JOIN new_rfm_segment_analysis r ON f.customer_id = r.customer_id
+    WHERE (EXTRACT(year FROM c.invoice_date) - EXTRACT(year FROM f.cohort_month)) * 12 +
           (EXTRACT(month FROM c.invoice_date) - EXTRACT(month FROM f.cohort_month)) BETWEEN 1 AND 12
     GROUP BY 1, 2, 3
 ),
@@ -156,8 +113,8 @@ SELECT
     m.month_number,
     m.active_customers,
     c.total_customers,
-    ROUND(m.active_customers::NUMERIC / NULLIF(c.total_customers, 0) * 100, 1)          AS retention_rate_pct,
-    ROUND(100 - (m.active_customers::NUMERIC / NULLIF(c.total_customers, 0) * 100), 1)  AS churn_rate_pct
+    ROUND(m.active_customers::NUMERIC / NULLIF(c.total_customers, 0) * 100, 1) AS retention_rate_pct,
+    ROUND(100 - (m.active_customers::NUMERIC / NULLIF(c.total_customers, 0) * 100), 1) AS churn_rate_pct
 FROM monthly_retained m
 JOIN cohort_size c USING (customer_segment)
 ORDER BY
@@ -165,12 +122,14 @@ ORDER BY
         WHEN 'Champions'            THEN 1
         WHEN 'Loyal'                THEN 2
         WHEN 'Potential Loyalists'  THEN 3
-        WHEN 'Promising'            THEN 4
-        WHEN 'Big Spenders'         THEN 5
-        WHEN 'Needs Attention'      THEN 6
-        WHEN 'At-Risk'              THEN 7
-        WHEN 'Hibernating'          THEN 8
-        WHEN 'Lost'                 THEN 9
-        ELSE                        10
+        WHEN 'Recent Customers'     THEN 4
+        WHEN 'Promising'            THEN 5
+        WHEN 'Need Attention'       THEN 6
+        WHEN 'About to Sleep'       THEN 7
+        WHEN 'At-Risk'              THEN 8
+        WHEN 'Cannot Lose'          THEN 9
+        WHEN 'Hibernating'          THEN 10
+        WHEN 'Lost'                 THEN 11
+        ELSE                        12
     END,
     m.month_number;

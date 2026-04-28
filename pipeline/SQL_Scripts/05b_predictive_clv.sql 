@@ -1,80 +1,174 @@
--- PHASE 5B: PREDICTIVE CUSTOMER LIFETIME VALUE ANALYSIS
--- CLV = (Average Order Value × Purchase Frequency) / Churn Rate
--- Customer Lifespan = 1 / Churn Rate
+-- PHASE 5B: PREDICTIVE CLV
 
-CREATE TABLE predictive_clv_analysis AS
-WITH reference_date AS (
-    SELECT MAX(invoice_date) + INTERVAL '1 day' AS ref_day
+DROP TABLE IF EXISTS new_predictive_clv_analysis;
+
+CREATE TABLE new_predictive_clv_analysis AS
+WITH date_range AS (
+    SELECT 
+        EXTRACT(days FROM (MAX(invoice_date) - MIN(invoice_date))) / 365.0 AS data_years
     FROM cleaned_retail_main
-),
-base_rfm AS (
-    SELECT
-        customer_id,
-        MAX(invoice_date)                AS last_purchase_date,
-        COUNT(DISTINCT invoice)::NUMERIC AS frequency,
-        SUM(total_price)::NUMERIC        AS monetary
-    FROM cleaned_retail_main
-    GROUP BY customer_id
-),
-rfm_scores AS (
-    SELECT
-        b.customer_id,
-        b.frequency,
-        b.monetary,
-        b.last_purchase_date,
-        DATE_PART('day', r.ref_day - b.last_purchase_date)::NUMERIC                      AS recency_days,
-        NTILE(5) OVER (ORDER BY DATE_PART('day', r.ref_day - b.last_purchase_date) DESC) AS r_score,
-        NTILE(5) OVER (ORDER BY b.frequency ASC)                                          AS f_score,
-        NTILE(5) OVER (ORDER BY b.monetary ASC)                                           AS m_score
-    FROM base_rfm b
-    CROSS JOIN reference_date r
-),
-rfm_final AS (
-    SELECT
-        *,
-        CASE
-            WHEN r_score = 1 AND f_score = 1 AND m_score = 1                                THEN 'Lost'
-            WHEN r_score = 1 AND f_score BETWEEN 1 AND 2 AND m_score BETWEEN 1 AND 2       THEN 'Hibernating'
-            WHEN r_score <= 2 AND f_score >= 3 AND m_score >= 3                             THEN 'At-Risk'
-            WHEN r_score BETWEEN 2 AND 3 AND f_score >= 3                                   THEN 'Needs Attention'
-            WHEN r_score >= 4 AND f_score BETWEEN 1 AND 2                                   THEN 'Promising'
-            WHEN r_score >= 4 AND f_score BETWEEN 2 AND 3 AND m_score >= 3                  THEN 'Potential Loyalists'
-            WHEN f_score <= 3 AND m_score >= 4                                               THEN 'Big Spenders'
-            WHEN r_score >= 4 AND f_score >= 4 AND m_score >= 4                             THEN 'Champions'
-            WHEN r_score >= 3 AND f_score >= 4 AND m_score >= 3                             THEN 'Loyal'
-            ELSE 'General/Other'
-        END AS customer_segment
-    FROM rfm_scores
 ),
 segment_aggregates AS (
     SELECT
-        f.customer_segment,
-        COUNT(DISTINCT f.customer_id)                  AS total_customers,
-        SUM(f.monetary) / NULLIF(SUM(f.frequency), 0) AS avg_order_value,
-        AVG(f.frequency)                               AS avg_frequency,
+        r.customer_segment,
+        COUNT(r.customer_id)                                        AS total_customers,
+        SUM(r.monetary) / NULLIF(SUM(r.frequency), 0)              AS avg_order_value,
+        AVG(r.frequency) / d.data_years                            AS avg_annual_frequency,
+        AVG(r.recency_days)                                         AS avg_recency_days,
         COUNT(
-            CASE
-                WHEN DATE_PART('day', r.ref_day - f.last_purchase_date) > 90
-                THEN 1
-            END
-        )::NUMERIC / COUNT(*)                          AS churn_rate
-    FROM rfm_final f
-    CROSS JOIN reference_date r
-    GROUP BY f.customer_segment
+            CASE WHEN r.recency_days > 90 THEN 1 END
+        )::NUMERIC / NULLIF(COUNT(r.customer_id), 0)               AS churn_rate
+    FROM new_rfm_segment_analysis r
+    CROSS JOIN date_range d
+    GROUP BY r.customer_segment, d.data_years
+),
+adjusted AS (
+    SELECT
+        *,
+        CASE
+            -- If churn = 0, derive from actual recency behaviour
+            WHEN churn_rate = 0    THEN avg_recency_days / 365.0
+            -- Cap at 0.99 to avoid division issues
+            WHEN churn_rate >= 1.0 THEN 0.99
+            ELSE churn_rate
+        END AS adjusted_churn_rate
+    FROM segment_aggregates
 )
 SELECT
     customer_segment,
     total_customers,
-    ROUND(avg_order_value::NUMERIC, 2)                                           AS aov,
-    ROUND(avg_frequency::NUMERIC, 2)                                             AS avg_frequency,
-    ROUND(churn_rate::NUMERIC, 2)                                                AS segment_churn_rate,
-    ROUND((1 - churn_rate)::NUMERIC, 2)                                          AS segment_retention_rate,
-    ROUND((3 / GREATEST(churn_rate, 0.001))::NUMERIC, 2)                         AS avg_customer_lifespan_months,
+    ROUND(avg_order_value::NUMERIC, 2)                              AS aov,
+    ROUND(avg_annual_frequency::NUMERIC, 2)                         AS avg_annual_frequency,
+    ROUND(avg_recency_days::NUMERIC, 0)                             AS avg_recency_days,
+    ROUND(churn_rate::NUMERIC, 4)                                   AS raw_churn_rate,
+    ROUND(adjusted_churn_rate::NUMERIC, 4)                          AS segment_churn_rate,
+    ROUND((1 - adjusted_churn_rate)::NUMERIC, 4)                    AS retention_rate,
+    ROUND((1 / adjusted_churn_rate)::NUMERIC, 2)                    AS avg_customer_lifespan_years,
     ROUND(
-        (avg_order_value * avg_frequency / GREATEST(churn_rate, 0.001))::NUMERIC,
+        (avg_order_value * avg_annual_frequency / adjusted_churn_rate)::NUMERIC,
         2
-    )                                                                             AS predicted_clv
-FROM segment_aggregates
+    )                                                               AS predicted_clv
+FROM adjusted
 ORDER BY predicted_clv DESC;
 
+--Pivot for easier visualization
 
+DROP TABLE IF EXISTS new_clv_pivot;
+
+CREATE TABLE new_clv_pivot AS
+WITH base AS (
+    SELECT
+        customer_segment,
+        aov,
+        predicted_clv,
+        avg_frequency,
+        retention_rate,
+        avg_customer_lifespan,
+        total_customers
+    FROM new_predictive_clv_analysis
+),
+grand_totals AS (
+    SELECT
+        SUM(aov * total_customers) / SUM(total_customers)           AS weighted_avg_aov,
+        SUM(predicted_clv * total_customers) / SUM(total_customers) AS weighted_avg_clv,
+        SUM(avg_frequency * total_customers) / SUM(total_customers) AS weighted_avg_frequency,
+        SUM(retention_rate * total_customers) / SUM(total_customers) AS weighted_avg_retention,
+        SUM(avg_customer_lifespan * total_customers) / SUM(total_customers) AS weighted_avg_lifespan
+    FROM base
+)
+SELECT
+    b.customer_segment                                              AS segment,
+    ROUND(b.aov::NUMERIC, 2)                                       AS segment_aov,
+    ROUND(b.predicted_clv::NUMERIC, 2)                             AS segment_clv,
+    ROUND(b.avg_frequency::NUMERIC, 2)                             AS segment_avg_frequency,
+    ROUND(b.retention_rate::NUMERIC, 4)                            AS segment_retention_rate,
+    ROUND(b.avg_customer_lifespan::NUMERIC, 2)                     AS segment_avg_lifespan,
+    -- Weighted averages of ALL OTHER segments
+    ROUND(
+        (g.weighted_avg_aov * SUM(b2.total_customers) - b.aov * b.total_customers)
+        / NULLIF(SUM(b2.total_customers) - b.total_customers, 0)
+    ::NUMERIC, 2)                                                   AS others_aov,
+    ROUND(
+        (g.weighted_avg_clv * SUM(b2.total_customers) - b.predicted_clv * b.total_customers)
+        / NULLIF(SUM(b2.total_customers) - b.total_customers, 0)
+    ::NUMERIC, 2)                                                   AS others_clv,
+    ROUND(
+        (g.weighted_avg_frequency * SUM(b2.total_customers) - b.avg_frequency * b.total_customers)
+        / NULLIF(SUM(b2.total_customers) - b.total_customers, 0)
+    ::NUMERIC, 2)                                                   AS others_avg_frequency,
+    ROUND(
+        (g.weighted_avg_retention * SUM(b2.total_customers) - b.retention_rate * b.total_customers)
+        / NULLIF(SUM(b2.total_customers) - b.total_customers, 0)
+    ::NUMERIC, 4)                                                   AS others_retention_rate,
+    ROUND(
+        (g.weighted_avg_lifespan * SUM(b2.total_customers) - b.avg_customer_lifespan * b.total_customers)
+        / NULLIF(SUM(b2.total_customers) - b.total_customers, 0)
+    ::NUMERIC, 2)                                                   AS others_avg_lifespan
+FROM base b
+CROSS JOIN grand_totals g
+CROSS JOIN (SELECT SUM(total_customers) AS total_customers FROM base) b2
+GROUP BY
+    b.customer_segment, b.aov, b.predicted_clv, b.avg_frequency,
+    b.retention_rate, b.avg_customer_lifespan, b.total_customers,
+    g.weighted_avg_aov, g.weighted_avg_clv, g.weighted_avg_frequency,
+    g.weighted_avg_retention, g.weighted_avg_lifespan
+ORDER BY
+    CASE b.customer_segment
+        WHEN 'Champions'           THEN 1
+        WHEN 'Loyal'               THEN 2
+        WHEN 'Potential Loyalists' THEN 3
+        WHEN 'Recent Customers'    THEN 4
+        WHEN 'Promising'           THEN 5
+        WHEN 'Need Attention'      THEN 6
+        WHEN 'About to Sleep'      THEN 7
+        WHEN 'At-Risk'             THEN 8
+        WHEN 'Cannot Lose'         THEN 9
+        WHEN 'Hibernating'         THEN 10
+        WHEN 'Lost'                THEN 11
+        ELSE                       12
+    END;
+
+DROP TABLE IF EXISTS new_clv_churn_matrix;
+
+CREATE TABLE new_clv_churn_matrix AS
+WITH segment_stats AS (
+    SELECT
+        customer_segment,
+        AVG(monetary)                    AS avg_monetary,
+        AVG(recency_days)                AS avg_recency,
+        AVG(frequency)                   AS avg_frequency,
+        COUNT(customer_id)               AS total_customers,
+        COUNT(CASE WHEN recency_days > 90 THEN 1 END
+        )::NUMERIC / COUNT(customer_id) * 100 AS churn_rate_pct
+    FROM new_rfm_segment_analysis
+    GROUP BY customer_segment
+),
+overall AS (
+    SELECT AVG(avg_monetary) AS overall_avg_monetary
+    FROM segment_stats
+)
+SELECT
+    s.customer_segment,
+    ROUND(s.avg_monetary::NUMERIC, 2)      AS avg_monetary,
+    ROUND(s.avg_recency::NUMERIC, 0)       AS avg_recency,
+    ROUND(s.avg_frequency::NUMERIC, 2)     AS avg_frequency,
+    s.total_customers,
+    ROUND(s.churn_rate_pct::NUMERIC, 2)    AS churn_rate_pct,
+    ROUND(o.overall_avg_monetary::NUMERIC, 2) AS overall_avg_monetary,
+    CASE
+        WHEN s.churn_rate_pct >= 50 
+             AND s.avg_monetary >= o.overall_avg_monetary 
+        THEN 'Urgent Win-back'
+        WHEN s.churn_rate_pct < 50 
+             AND s.avg_monetary >= o.overall_avg_monetary 
+        THEN 'Protect'
+        WHEN s.churn_rate_pct >= 50 
+             AND s.avg_monetary < o.overall_avg_monetary 
+        THEN 'Low ROI'
+        ELSE 'Monitor'
+    END                                    AS quadrant
+FROM segment_stats s
+CROSS JOIN overall o
+ORDER BY churn_rate_pct;
+
+SELECT overall_avg_monetary FROM new_clv_churn_matrix LIMIT 1;

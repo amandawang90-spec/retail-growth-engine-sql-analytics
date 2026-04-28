@@ -1,8 +1,8 @@
 -- PHASE 7: PRODUCT ANALYSIS
--- Goal: Understand which products drive revenue, which have high return rates.
 
--- 7A: Top 20 Products by Revenue
-CREATE TABLE top_products_by_revenue AS
+DROP TABLE IF EXISTS new_top_products_by_revenue;
+
+CREATE TABLE new_top_products_by_revenue AS
 SELECT
     stock_code,
     description,
@@ -18,8 +18,9 @@ ORDER BY total_revenue DESC
 LIMIT 20;
 
 
--- 7B : Product Return Analysis
-CREATE TABLE product_return_analysis AS
+DROP TABLE IF EXISTS new_product_return_analysis;
+
+CREATE TABLE new_product_return_analysis AS
 WITH sales AS (
     SELECT
         stock_code,
@@ -53,21 +54,18 @@ SELECT
     COALESCE(r.total_units_returned, 0)                       AS total_units_returned,
     s.total_sales_orders,
     COALESCE(r.total_return_orders, 0)                        AS total_return_orders,
-    LEAST(ROUND(COALESCE(r.total_units_returned, 0)::NUMERIC
-    / NULLIF(s.total_units_sold, 0) * 100, 2), 100) AS return_rate_pct
+    ROUND(COALESCE(r.total_units_returned, 0)::NUMERIC
+        / NULLIF(s.total_units_sold, 0) * 100, 2)             AS return_rate_pct
 FROM sales s
 LEFT JOIN returns r ON s.stock_code = r.stock_code
 WHERE s.total_units_sold >= 100
 ORDER BY return_rate_pct DESC
 LIMIT 30;
 
---Return rate analysis is approximate due to known data quality issues in the dataset 
---some cancellation invoices reference sales that predate the dataset window, 
---causing return rates to exceed 100% for certain products. These are capped at 100% and should be interpreted with caution.
 
--- 7C: Revenue by Product Category (using price bands)
--- Goal: Understand the price distribution of the product catalog
-CREATE TABLE revenue_by_price_band AS
+DROP TABLE IF EXISTS new_revenue_by_price_band;
+
+CREATE TABLE new_revenue_by_price_band AS
 SELECT
     CASE
         WHEN price < 1       THEN '< £1'
@@ -86,9 +84,3 @@ SELECT
 FROM cleaned_retail_main
 GROUP BY price_band
 ORDER BY MIN(price) ASC;
-
---The business operates a high-volume, low-price model. 
---80% of revenue comes from products priced under £5, 
---with the £1-£5 band being the dominant revenue driver across 3,319 SKUs. 
---Premium products (£20+) represent less than 1.2% of revenue despite accounting for 93 SKUs, 
---suggesting limited appetite for higher-priced items in the customer base.
